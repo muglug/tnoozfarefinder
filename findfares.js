@@ -101,8 +101,7 @@ function traverseChildNodes(node, first_word_dictionary) {
     }
     else if (node.nodeType === 3) {
     	var node_data = node.data;
-    	console.log(node_data, (new RegExp('Bucharest')).test(node_data));
-        for (var city_first in first_word_dictionary) {
+    	for (var city_first in first_word_dictionary) {
         	if (first_word_dictionary.hasOwnProperty(city_first)) {
         		/*
         		Possibilities:
@@ -110,11 +109,9 @@ function traverseChildNodes(node, first_word_dictionary) {
 
         		Portland => [Portland]
         		 */
-        		var first_word_regex = new RegExp('\bBucharest\b');
+        		var first_word_regex = new RegExp('\\b' + city_first + '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$))');
 
-        		if (first_word_regex.test(node_data)) {
-        			console.log(first_word_regex);
-        			
+        		if (first_word_regex.test(node_data)) {        			
         			var start_offset = node.data.search(first_word_regex) + city_first.length;
 
         			for (var c = 0; c < first_word_dictionary[city_first].length; c++) {
@@ -131,7 +128,7 @@ function traverseChildNodes(node, first_word_dictionary) {
     					else if(first_word_dictionary[city_first].length > 1) {
     						var has_replaced = false;
 
-    						var full_name_regex = new RexExp('\b' + first_word_dictionary[city_first].join('\b[\s\n\r]+\b') + '\b');
+    						var full_name_regex = new RexExp('\\b' + first_word_dictionary[city_first].join('\\b[\\s\\n\\r]+\\b') + '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$))');
 
     						if (node_data.substring(start_offset).search(first_word_regex) === 0) {
     							wrapMatchInNode(node, first_word_regex);
@@ -153,21 +150,10 @@ function wrapMatchInNode(textNode, match_regex) {
 
 	temp.innerHTML = textNode.data.replace(match_regex, '<span style="display:inline-block">$&<a href="http://tnooz.local/lookup?$&">&#9992;</a></span>');
 
-	// temp.innerHTML is now:
-	// "n    This order's reference number is <a href="/order/RF83297">RF83297</a>.n"
-	// |_______________________________________|__________________________________|___|
-	//                     |                                      |                 |
-	//                 TEXT NODE                             ELEMENT NODE       TEXT NODE
-
-	// Extract produced nodes and insert them
-	// before original textNode:
 	while (temp.firstChild) {
-	    console.log(textNode.parentNode);
 	    textNode.parentNode.insertBefore(temp.firstChild, textNode);
 	}
-	// Logged: 3,1,3
 
-	// Remove original text-node:
 	textNode.parentNode.removeChild(textNode);
 }
 
