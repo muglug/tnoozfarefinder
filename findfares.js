@@ -100,8 +100,11 @@ function traverseChildNodes(node, first_word_dictionary) {
  
     }
     else if (node.nodeType === 3) {
+    	var matching_regexes = [];
     	var node_data = node.data;
+
     	for (var city_first in first_word_dictionary) {
+
         	if (first_word_dictionary.hasOwnProperty(city_first)) {
         		/*
         		Possibilities:
@@ -109,47 +112,61 @@ function traverseChildNodes(node, first_word_dictionary) {
 
         		Portland => [Portland]
         		 */
-        		var first_word_regex = new RegExp('\\b' + city_first + '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$))');
+        		var lookahead = '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$|,))';
+        		
+    			// if there's only one word in the city name
+    			// we know there's only one entry in the first_word_dictionary[city_first] array
+    			if (first_word_dictionary[city_first].length === 1) {
+    				var first_word_regex = new RegExp('\\b' + city_first + lookahead);
 
-        		if (first_word_regex.test(node_data)) {        			
-        			var start_offset = node.data.search(first_word_regex) + city_first.length;
+	        		if (first_word_regex.test(node_data)) {  
+        				var city_info = first_word_dictionary[city_first][0];
 
-        			for (var c = 0; c < first_word_dictionary[city_first].length; c++) {
-        				var city_info = first_word_dictionary[city_first][c];
-    					
-    					// if there's only one word in the city name
-    					// we know there's only one entry in the first_word_dictionary[city_first] array
-    					if (city_info.City === city_first) {
-    						wrapMatchInNode(node, first_word_regex);
+        				matching_regexes.push(first_word_regex);
 
-    						delete first_word_dictionary[city_first];
-    						break;
-    					}
-    					else if(first_word_dictionary[city_first].length > 1) {
-    						var has_replaced = false;
+						delete first_word_dictionary[city_first];
+    				}
+    			}
+    			else {
+    				var first_word_regex = new RegExp('\\b' + city_first + '\\b');
 
-    						var full_name_regex = new RexExp('\\b' + first_word_dictionary[city_first].join('\\b[\\s\\n\\r]+\\b') + '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$))');
+	        		if (first_word_regex.test(node_data)) {    
 
-    						if (node_data.substring(start_offset).search(first_word_regex) === 0) {
-    							wrapMatchInNode(node, first_word_regex);
+	    				for (var c = 0; c < first_word_dictionary[city_first].length; c++) {
+	        				var city_info = first_word_dictionary[city_first][c];
+	    						
+							var has_replaced = false;
 
-	    						delete first_word_dictionary[city_first][i];
-	    						continue;
-    						}
-    					}
-        			}
-		        }
+							var full_name_regex = new RegExp('\\b' + city_info.City.split(' ').join('[\\s\\n\\r]+') + lookahead);
+
+							if (full_name_regex.test(node_data)) {
+								matching_regexes.push(full_name_regex);
+
+	    						first_word_dictionary[city_first].splice(c, 1);
+	    						c--;
+							}
+	        			}
+	        		}
+    			}
         	}
+        }
+
+        if (matching_regexes.length) {
+        	wrapMatchesInNode(node, matching_regexes);
         }
     }
 }
 
-function wrapMatchInNode(textNode, match_regex) {
+function wrapMatchesInNode(textNode, matching_regexes) {
  
 	var temp = document.createElement('div');
 
-	temp.innerHTML = textNode.data.replace(match_regex, '<span style="display:inline-block">$&<a href="http://tnooz.local/lookup?$&">&#9992;</a></span>');
+	temp.innerHTML = textNode.data;
 
+	matching_regexes.forEach(function(matching_regex) {
+		temp.innerHTML = temp.innerHTML.replace(matching_regex, '<span style="display:inline-block">$&<a href="http://tnooz.local/lookup?$&">&#9992;</a></span>');
+	});
+	
 	while (temp.firstChild) {
 	    textNode.parentNode.insertBefore(temp.firstChild, textNode);
 	}
