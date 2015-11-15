@@ -44,7 +44,7 @@ var current_location = null,
 
 function fetchCurrentLocation() {
 	if (!current_location && !ip_request) {
-		var ip_location_url = 'freegeo_ip.json'; //'https://freegeoip.net/json/';
+		var ip_location_url = 'json/freegeo_ip.json'; //'https://freegeoip.net/json/';
 
 		ip_request = new XMLHttpRequest();
 		ip_request.open('GET', ip_location_url, true);
@@ -67,7 +67,7 @@ function fetchCurrentLocation() {
 
 function fetchAirportLocations() {
 	if (!airport_locations && !airport_locations_request) {
-		var airport_locations_url = 'airport_locations.json';
+		var airport_locations_url = 'json/airport_locations.json';
 
 		airport_locations_request = new XMLHttpRequest();
 		airport_locations_request.open('GET', airport_locations_url, true);
@@ -90,7 +90,7 @@ function fetchAirportLocations() {
 
 function fetchNearestAirports(latitude, longitude) {
 	if (!nearest_airports && !nearest_airports_request) {
-		var nearest_airports_url = 'nearest_airports.json';
+		var nearest_airports_url = 'json/nearest_airports.json';
 
 		nearest_airports_request = new XMLHttpRequest();
 		nearest_airports_request.open('GET', nearest_airports_url + '?latitude=' + latitude + '&longitude=' + longitude, true);
