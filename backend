@@ -1,0 +1,203 @@
+import webapp2
+import cgi
+import urllib2
+import urllib
+import base64
+import json
+import operator 
+import time
+import math
+import datetime
+import re 
+import os
+import random
+import string
+
+from google.appengine.api import users
+
+from google.appengine.api import urlfetch
+from google.appengine.api import taskqueue
+from google.appengine.ext import ndb
+
+class TokenPot(ndb.Model):
+	tokenString = ndb.StringProperty()
+	createdate = ndb.DateTimeProperty(auto_now_add=True)
+	expiredate = ndb.DateTimeProperty()
+
+class tnooz(webapp2.RequestHandler):
+
+	def getAccessToken(self):	
+		tokendata = TokenPot.query(TokenPot.expiredate >= datetime.datetime.now()).fetch(1) #all we need is one key  
+		if tokendata:	#if there's an active key in the queue 
+			for token in tokendata:
+				return token.tokenString
+		
+		else:	#no active token
+			
+			#clientid = base64.b64encode('V1:bli9pooqhno0gxem:DEVCENTER:EXT')
+			#clientpass = base64.b64encode('6sdWKaO7')
+			clientid = base64.b64encode('V1:qrbdsinza77qcqkh:DEVCENTER:EXT')
+			clientpass = base64.b64encode('AtFdK8u6')
+			
+			
+			encodedCred = base64.b64encode( clientid + ':' + clientpass )
+			query_args = { 'grant_type':'client_credentials' }
+
+			postdata = urllib.urlencode(query_args)
+			
+			headers = {	
+						'Authorization' : 'Basic ' + encodedCred,
+						'Content-Type' : 'application/x-www-form-urlencoded',
+						'Accept' : 'application/json'
+						}
+			endpoint = "https://api.test.sabre.com/v1/auth/token"
+			
+			
+			try:
+				request = urllib2.Request(endpoint,postdata,headers)
+				result = urllib2.urlopen(request)
+				data = json.loads(result.read())
+				accesstoken = data['access_token']
+				expires_in =  data['expires_in']
+				
+				#add token to datastore
+				dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in)
+				Token = TokenPot(tokenString=accesstoken,expiredate=dt)
+				TokenKey = Token.put()
+				return accesstoken
+			except urllib2.URLError, e:
+				return e.reason
+				
+	def get(self):
+	
+		self.response.headers.add_header("Access-Control-Allow-Origin", "*")	#cross origin for affiliates
+		
+		origin = self.request.get("from")
+		dest = self.request.get("to")
+		
+		
+		### SABRE PART ###
+		seasonData = {}
+		accessToken = self.getAccessToken()
+		
+		
+		origin = self.request.get("from")
+		dest = self.request.get("to")
+		
+		
+		endpoint = 'https://api.test.sabre.com/v1/historical/flights/'+dest+'/seasonality'
+		'Authorization: Bearer'
+		headers = {	
+					'Authorization' : 'Bearer ' + accessToken,
+					'Content-Type' : 'application/x-www-form-urlencoded',
+					'Accept' : 'application/json'
+				  }
+	
+		try:
+			request = urllib2.Request(endpoint,headers)
+			result = urlfetch.fetch(endpoint,headers=headers,method='GET',deadline=20)
+			data = json.loads(result.content)
+			#self.response.write(result.content)
+			
+			while ('status' in data):	#didn't work
+				time.sleep(2)
+				accessToken = self.getAccessToken()
+				request = urllib2.Request(endpoint,headers)
+				result = urlfetch.fetch(endpoint,headers=headers,method='GET',deadline=20)
+				data = json.loads(result.content)
+				#self.response.write(result.content)
+			
+			
+		except urllib2.URLError, e:
+			return e.reason
+
+		holdmonth = 1
+		numweeks = 0
+		sum = 0
+		
+		for week in data['Seasonality']:
+			yearweek = week['YearWeekNumber']
+			month = math.trunc(float(yearweek) / float(4.5)) + 1
+
+			if month != holdmonth:
+				if holdmonth < 10:
+					holdmonth2 = '0' + str(holdmonth)
+				else:
+					holdmonth2 = str(holdmonth)
+				seasonData[holdmonth2] = float(sum / numweeks)
+				holdmonth = month
+				sum = 0
+				numweeks = 0
+			
+			season = week['SeasonalityIndicator']
+			
+			if season == 'Low':
+				rating = 0.0
+			elif season == 'Medium':
+				rating = 0.5
+			elif season == 'High':
+				rating = 1.0
+				
+			numweeks += 1
+			sum += rating
+			#self.response.write(str(month) + ' - ' + str(yearweek) + ':' + str(rating) + '<br>')
+		#return
+		holdmonth2 = str(holdmonth)	
+		seasonData[holdmonth2] = float(sum / numweeks)
+		
+		
+		
+		### FAREPORTAL PART ###
+		
+		duration = '5'
+		flexibility = '9'
+		endpoint = 'https://api-dev.fareportallabs.com/xsearch/api/v1/FareProvider/'
+		output = []
+		
+		headers = {	
+			'Content-Type' : 'application/x-www-form-urlencoded',
+			'Accept' : 'application/json',
+			'username' : 'X1066E31B',
+			'password' : '730E69A4'
+			}
+		
+		months = ['12','01','02','03','04','05']
+		
+		year = '2015'
+		for month in months:
+			if month != '12':
+				year = '2016'
+			query = origin+'/'+dest+'/NULL/NULL/5000/USD/'+month+'-5-'+year+'/'+month+'-20-'+year+'/MO,TU,WE,TH,FR,SA,SU/'+duration+'/'+flexibility+'/False/False/92/Google/ROUNDTRIP/PERDEPARTUREDAY/XSearch/ddcc9ce0-fb79-4d88-b0f2-60d17ed7045e'
+			url = endpoint + query
+			try:
+				result = urlfetch.fetch(url,headers=headers,method='GET',deadline=20)
+				data = json.loads(result.content)
+				searchresults = data['SearchResults']
+			except urllib2.URLError, e:
+				self.response.write('Error: ' + e.reason)
+				return 0
+				
+			pricehold = 99999
+			departdate = ''
+			returndate = ''
+			for result in searchresults:
+				if result['TotalFare'] < pricehold:
+					pricehold = round(result['TotalFare'],2)
+					departdate = result['DepartureDate']
+					returndate = result['ReturnDate']
+			
+			
+			monthdata = {
+							'month':year+'-'+month,
+							'price':'{0:.02f}'.format(pricehold),
+							'popularity':seasonData[month],
+							'departdate':departdate,
+							'returndate':returndate
+						}
+			output.append(monthdata)
+			
+		self.response.write(json.dumps(output,encoding='latin1'))
+			
+app = webapp2.WSGIApplication([
+			('/tnooz', tnooz)
+		], debug=True)
