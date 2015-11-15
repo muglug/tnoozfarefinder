@@ -32,9 +32,11 @@ var current_location = null,
 	ip_request,
 	airport_locations_request,
 	nearest_airports_request,
+	cheapest_flights_request,
 	container_id = 'tnooz_flightfinder_overlay',
+	results_container_id = 'tnooz_results_container';
 	nearest_airports = null,
-	flight_lookup_cache;
+	flight_lookup_cache = {};
 
 function fetchCurrentLocation() {
 	if (!current_location && !ip_request) {
@@ -112,14 +114,14 @@ function fetchCheapestFlights(from_airport, to_airport) {
 	var cache_key = from_airport + '_' + to_airport;
 
 	if (!flight_lookup_cache[cache_key]) {
-		var flight_lookup = 'http://beta.flightkitty.com/tnooz?from=' + from_airport + '&to=' + to_airport;
+		var flight_lookup_url = 'http://beta.flightkitty.com/tnooz?from=' + from_airport + '&to=' + to_airport;
 
 		if (cheapest_flights_request) {
 			cheapest_flights_request.abort();
 		}
 
 		cheapest_flights_request = new XMLHttpRequest();
-		cheapest_flights_request.open('GET', nearest_airports_url + '?latitude=' + latitude + '&longitude=' + longitude, true);
+		cheapest_flights_request.open('GET', flight_lookup_url, true);
 
 		cheapest_flights_request.onload = function() {
 			if (cheapest_flights_request.status >= 200 && cheapest_flights_request.status < 400) {
@@ -138,7 +140,7 @@ function fetchCheapestFlights(from_airport, to_airport) {
 		cheapest_flights_request.send();
 	}
 	else {
-		fetchCheapestFlights(flight_lookup_cache[cache_key]);
+		processCheapestFlights(flight_lookup_cache[cache_key]);
 	}
 }
 
@@ -159,7 +161,64 @@ function processNearestAirports(json) {
 }
 
 function processCheapestFlights(json) {
-	console.log(json);
+	var results_container = document.getElementById(results_container_id);
+
+	results_container.innerHTML = '';
+
+	var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+	var max_price = 0;
+	var min_price = Number.POSITIVE_INFINITY;
+
+	json.forEach(function(month_data) {
+		max_price = Math.max(max_price, Number(month_data.price));
+		min_price = Math.min(min_price, Number(month_data.price));
+	});
+
+	var month_price_container = document.createElement('div');
+	month_price_container.id = 'tnooz_month_price_container';
+	var max_width = 16.6;
+
+	json.forEach(function(month_data) {
+		var month_div = document.createElement('div');
+		var month_span = document.createElement('span');
+		var month_label = document.createElement('span');
+
+		var percent = 100 * (1 - Number(month_data.price) / max_price);
+		var popularity = 0.5 + Math.random() / 2;
+
+		console.log(popularity);
+
+		month_span.style.height = percent + '%';
+		
+		if (popularity > 0.825) {
+			month_div.classList.add('high');
+		}
+		else if (popularity < 0.625) {
+			month_div.classList.add('low');
+		}
+		else {
+			month_div.classList.add('medium');
+		}
+
+		month_span.classList.add('negative_month');
+
+		var date_parts = month_data.month.split('-');
+
+		month_label.classList.add('label');
+		month_label.innerHTML = '$' + Math.round(Number(month_data.price)) + '<br>' + months[Number(date_parts[1]) - 1];
+
+		month_div.appendChild(month_span);
+		month_div.appendChild(month_label);
+		month_price_container.appendChild(month_div);
+	});
+
+	selected_price_container = document.createElement('div');
+	selected_price_container.classList.add('price');
+	selected_price_container.innerHTML = 'From <span>$' + Math.round(min_price) + '</span>';
+
+	results_container.appendChild(selected_price_container)
+	results_container.appendChild(month_price_container);
 }
 
 function distance(dx, dy) {
@@ -171,7 +230,7 @@ function processAirportLocations(cities) {
 	var first_word_dictionary = [];
 
 	cities.forEach(function (city_info) {
-		if(distance(city_info.Lat - current_location.latitude, city_info.Long - current_location.longitude) > 3) {
+		if (distance(city_info.Lat - current_location.latitude, city_info.Long - current_location.longitude) > 3) {
 			if (!popular_dictionary[city_info.City]) {
 				popular_dictionary[city_info.City] = city_info;
 			}
@@ -383,10 +442,6 @@ function renderOverlayContent(city_info) {
 
 	current_location_span.textContent = current_location.city;
 
-	var from_span = document.createElement('span');
-	from_span.classList.add('from');
-	from_span.textContent = 'From ';
-
 	var to_span = document.createElement('span');
 	to_span.classList.add('to');
 	to_span.textContent = ' to ';
@@ -403,7 +458,6 @@ function renderOverlayContent(city_info) {
 		destination_span.textContent += ', ' + city_info.Country;
 	}
 
-	current_div.appendChild(from_span);
 	current_div.appendChild(current_location_span);
 
 	destination_div.appendChild(to_span);
@@ -423,7 +477,7 @@ function renderOverlayContent(city_info) {
 
 		from_select.addEventListener('change', function() {
 			current_location.preferred_airport = this.value;
-			processCheapestFlights(this.value, city_info.Airports.length > 1 ? destination_select.value : city_info.Airports[0]);
+			fetchCheapestFlights(this.value, city_info.Airports.length > 1 ? destination_select.value : city_info.Airports[0]);
 		});
 	}
 	else {
@@ -447,7 +501,7 @@ function renderOverlayContent(city_info) {
 
 		destination_select.addEventListener('change', function() {
 			city_info.preferred_airport = this.value;
-			processCheapestFlights(nearest_airports.length > 1 ? from_select.value : nearest_airports[0], this.value);
+			fetchCheapestFlights(nearest_airports.length > 1 ? from_select.value : nearest_airports[0], this.value);
 		});
 	}
  	else {
@@ -461,7 +515,15 @@ function renderOverlayContent(city_info) {
 
 	container_div.appendChild(header_container);
 
+	var results_container = document.createElement('div');
+	results_container.id = results_container_id;
 
+	container_div.appendChild(results_container);
+
+	fetchCheapestFlights(
+		nearest_airports.length > 1 ? from_select.value : nearest_airports[0],
+		city_info.Airports.length > 1 ? destination_select.value : city_info.Airports[0]
+	);
 }
 
 fetchCurrentLocation();
