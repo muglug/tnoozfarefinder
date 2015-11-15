@@ -27,12 +27,9 @@ function cache_set($key, $value, $duration)
 	}
 }
 
-
-$start_date = mktime(0, 0, 0, 11, 1, 2014);
-$end_date = mktime(0, 0, 0, 11, 1, 2015);
 $city = $_GET['city'];
 
-$cache_key = 'tempersa_' . $city;
+$cache_key = 'temperc_' . $city;
 
 if (cache_get($cache_key)) {
 	echo cache_get($cache_key);
@@ -51,7 +48,7 @@ $options = array(
     CURLOPT_TIMEOUT        => 120,    // time-out on response
 ); 
 
-$ch = curl_init("http://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&datatypeid=TAVG&locationid=" . $city . "&limit=1&startdate=". date('Y-m-d', $start_date) . "&enddate=". date('Y-m-d', $end_date));
+$ch = curl_init("http://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&datatypeid=TAVG&locationid=" . $city . "&limit=1&startdate=2014-01-01&enddate=2014-01-03");
 curl_setopt_array($ch, $options);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
 	'token:lTzobBOVgDhzkiKklhEWtDhBEHekGiHb'
@@ -59,38 +56,39 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
 
 $result = curl_exec($ch);
 curl_close($ch);
+
+if (!isset(json_decode($result)->results)) {
+	echo '{}';
+	exit();
+}
+
 $station = json_decode($result)->results[0]->station;
-
-$options = array(
-    CURLOPT_RETURNTRANSFER => true,   // return web page
-    CURLOPT_HEADER         => false,  // don't return headers
-    CURLOPT_FOLLOWLOCATION => true,   // follow redirects
-    CURLOPT_MAXREDIRS      => 10,     // stop after 10 redirects
-    CURLOPT_ENCODING       => "",     // handle compressed
-    CURLOPT_USERAGENT      => "test", // name of client
-    CURLOPT_AUTOREFERER    => true,   // set referrer on redirect
-    CURLOPT_CONNECTTIMEOUT => 120,    // time-out on connect
-    CURLOPT_TIMEOUT        => 120,    // time-out on response
-); 
-
-$ch = curl_init("http://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&stationid=" . $station . "&datatypeid=TAVG&locationid=" . $city . "&limit=1000&startdate=". date('Y-m-d', $start_date) . "&enddate=". date('Y-m-d', $end_date));
-curl_setopt_array($ch, $options);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-	'token:lTzobBOVgDhzkiKklhEWtDhBEHekGiHb'
-]);
-
-$result = curl_exec($ch);
-
-// close cURL resource, and free up system resources
-curl_close($ch);
-
-$results = json_decode($result)->results;
 
 $months = [];
 
-foreach ($results as $city_info) {
-	$month = (int)substr($city_info->date, 5, 2);
-	$months[$month][] = $city_info->value;
+load_months(mktime(0, 0, 0, 12, 1, 2014), mktime(0, 0, 0, 6, 1, 2015));
+load_months(mktime(0, 0, 0, 12, 1, 2013), mktime(0, 0, 0, 6, 1, 2014));
+
+function load_months($start_date, $end_date) {
+	global $months, $city, $options, $station;
+
+	$ch = curl_init("http://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&stationid=" . $station . "&datatypeid=TAVG&locationid=" . $city . "&limit=1000&startdate=". date('Y-m-d', $start_date) . "&enddate=". date('Y-m-d', $end_date));
+	curl_setopt_array($ch, $options);
+	curl_setopt($ch, CURLOPT_HTTPHEADER, [
+		'token:lTzobBOVgDhzkiKklhEWtDhBEHekGiHb'
+	]);
+
+	$result = curl_exec($ch);
+
+	// close cURL resource, and free up system resources
+	curl_close($ch);
+
+	$results = json_decode($result)->results;
+
+	foreach ($results as $city_info) {
+		$month = (int)substr($city_info->date, 5, 2);
+		$months[$month][] = $city_info->value;
+	}
 }
 
 $average_months = [];

@@ -149,10 +149,12 @@ function fetchCheapestFlights(from_airport, to_airport) {
 }
 
 function fetchTemperatures(city, country_code) {
-	var country_code = country_code.replace('GB', 'UK');
+	var country_code = country_code.replace('GB', 'UK').replace('DE', 'GM');
 	var noaa_city = noaa_map[city + ', ' + country_code];
-	//console.log(city + ', ' + country_code);
-	//return;
+	if (!noaa_city) {
+		console.log('could not find ' + city + ', ' + country_code);
+		return;
+	}
 	var temperatures_url = 'weather_by_month.php?city=' + noaa_city;
 
 	if (temperatures_request) {
@@ -263,7 +265,7 @@ function processCheapestFlights(json) {
 	results_container.appendChild(selected_price_container)
 	results_container.appendChild(month_price_container);
 
-	fetchTemperatures(current_city.City, (current_city.CountryCode === 'US' ? 'CA ' : '' )  + current_city.CountryCode);
+	fetchTemperatures(current_city.City, (current_city.CountryCode === 'US' ? (current_city.State || 'CA') + ' ' : '' )  + current_city.CountryCode);
 }
 
 function distance(dx, dy) {
@@ -340,41 +342,24 @@ function traverseChildNodes(node, first_word_dictionary) {
 
         		Portland => [Portland]
         		 */
-        		var lookahead = '(?=([\\s\\n\\r]+[a-z]|[\\s\\n\\r]*$|,))';
+        		var lookahead = '(?=([\\s\\n\\r]+[^A-Z]|[\\s\\n\\r]*$|,|\\.))';
         		
     			// if there's only one word in the city name
     			// we know there's only one entry in the first_word_dictionary[city_first] array
-    			if (first_word_dictionary[city_first].length === 1) {
-    				var first_word_regex = new RegExp('\\b' + city_first + lookahead);
 
-	        		if (first_word_regex.test(node_data)) {  
-        				var city_info = first_word_dictionary[city_first][0];
+    			for (var c = 0; c < first_word_dictionary[city_first].length; c++) {
+    				var city_info = first_word_dictionary[city_first][c];
+						
+					var has_replaced = false;
 
-        				matching_regexes.push(first_word_regex);
+					var full_name_regex = new RegExp('\\b' + city_info.City.split(' ').join('[\\s\\n\\r]+') + lookahead);
 
-						delete first_word_dictionary[city_first];
-    				}
-    			}
-    			else {
-    				var first_word_regex = new RegExp('\\b' + city_first + '\\b');
+					if (full_name_regex.test(node_data)) {
+						matching_regexes.push(full_name_regex);
 
-	        		if (first_word_regex.test(node_data)) {    
-
-	    				for (var c = 0; c < first_word_dictionary[city_first].length; c++) {
-	        				var city_info = first_word_dictionary[city_first][c];
-	    						
-							var has_replaced = false;
-
-							var full_name_regex = new RegExp('\\b' + city_info.City.split(' ').join('[\\s\\n\\r]+') + lookahead);
-
-							if (full_name_regex.test(node_data)) {
-								matching_regexes.push(full_name_regex);
-
-	    						first_word_dictionary[city_first].splice(c, 1);
-	    						c--;
-							}
-	        			}
-	        		}
+						first_word_dictionary[city_first].splice(c, 1);
+						c--;
+					}
     			}
         	}
         }
@@ -400,8 +385,8 @@ function hoverLocation() {
 
 	var city_info = airport_locations[location];
 
-	container_div.style.left = Math.max(0, boundRect.left - 20);
-	container_div.style.top = boundRect.bottom;
+	container_div.style.left = Math.max(0, boundRect.left - 20) + 'px';
+	container_div.style.top = (boundRect.bottom + window.scrollY) + 'px';
 
 	insertAfter(container_div, this.parentNode);
 
@@ -581,7 +566,7 @@ function renderOverlayContent(city_info) {
 
 window.addEventListener('resize', function() {
 	var container_div = document.getElementById(container_id);
-	container_div.classList.remove(container_div);
+	container_div.classList.remove('hovered');
 });
 
 fetchCurrentLocation();
